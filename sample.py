@@ -145,27 +145,33 @@ def sample_autoregressive(partial_sequences,
         """One step in the decode loop."""
         nonlocal sampling_keep_top_k
 
-        context = mtf_transformer.transformer.Context(
-            model=None,
-            mesh=inputs.mesh,
-            batch_dims=batch_dims,
-            length_dim=length_dim,
-            variable_dtype=variable_dtype,
-            mode="incremental",
-            position=position,
-            position_is_default=True,
-            states=states,
-            new_states=[],
-            initial_position=position,
-            sequence_id=None,
-            encoder_output=encoder_output,
-            encoder_sequence_id=encoder_sequence_id,
-            shared_params=shared_params,
-            encoder_layer_outputs=encoder_layer_outputs,
-            write_priority=write_priority,
-            read_priority=read_priority,
-            inputs=ids,
-            encoder_inputs=encoder_inputs) if not slow_sampling else None
+        context = (
+            None
+            if slow_sampling
+            else mtf_transformer.transformer.Context(
+                model=None,
+                mesh=inputs.mesh,
+                batch_dims=batch_dims,
+                length_dim=length_dim,
+                variable_dtype=variable_dtype,
+                mode="incremental",
+                position=position,
+                position_is_default=True,
+                states=states,
+                new_states=[],
+                initial_position=position,
+                sequence_id=None,
+                encoder_output=encoder_output,
+                encoder_sequence_id=encoder_sequence_id,
+                shared_params=shared_params,
+                encoder_layer_outputs=encoder_layer_outputs,
+                write_priority=write_priority,
+                read_priority=read_priority,
+                inputs=ids,
+                encoder_inputs=encoder_inputs,
+            )
+        )
+
 
         with tf.variable_scope("gpt2", reuse=tf.AUTO_REUSE):
             logits, _, _ = gpt2.model({"inputs": ids}, other_features, params, inputs.mesh, variable_dtype=variable_dtype, context = context)

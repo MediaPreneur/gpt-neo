@@ -52,14 +52,22 @@ def train_thread(args, tpu, id, q):
     print('starting training on', tpu)
 
     # pass binary flags through
-    opts = ''
-    for flag in ['auto_layout', 'auto_layout_and_mesh_shape', 'new', 'test', 'predict', 'eval', ]:
-        if args.__getattribute__(flag):
-            opts += ' --' + flag
+    opts = ''.join(
+        f' --{flag}'
+        for flag in [
+            'auto_layout',
+            'auto_layout_and_mesh_shape',
+            'new',
+            'test',
+            'predict',
+            'eval',
+        ]
+        if args.__getattribute__(flag)
+    )
 
     for flag in ['autostack', ]:
         if not args.__getattribute__(flag):
-            opts += ' --' + flag
+            opts += f' --{flag}'
 
     cmd = "python3 main.py --tpu {tpu} --model run_configs/config_{id}.json --steps_per_checkpoint {steps_per_checkpoint} {opts} --sacred_id {run_id}".format(tpu=tpu, id=id, steps_per_checkpoint=args.steps_per_checkpoint, opts=opts, run_id=id)
     print('Running:', cmd)
@@ -76,7 +84,7 @@ def train_thread(args, tpu, id, q):
                 proc.terminate()
 
                 time.sleep(60)
-                
+
                 # if it still hasn't exited, we send SIGKILL
                 if proc.poll() is None: 
                     print('SIGTERM not successful, sending SIGKILL')
@@ -90,15 +98,15 @@ def train_thread(args, tpu, id, q):
         print('exited gracefully')
         os.kill(os.getpid(), signal.SIGINT)
         return
-    
+
     if args.no_delete_tpu:
         print('recreate done, exiting train_thread - not killing tpu!')
         return
-    print("Recreating {} in 60sec...".format(tpu))
+    print(f"Recreating {tpu} in 60sec...")
     time.sleep(60)
-    os.system("pu recreate {} --yes --retry 3600 --retry-randomness 1.5".format(tpu))
+    os.system(f"pu recreate {tpu} --yes --retry 3600 --retry-randomness 1.5")
     print('recreate done, exiting train_thread')
-    
+
     # clear out queue
     while True:
         try:
@@ -135,12 +143,10 @@ def get_run_data(port):
     try:
         tag_sets = get_tag_sets(base_uri)
         runs = tag_sets.keys()
-        if '.' in runs:
-            if 'loss' in tag_sets['.']:
-                r['loss'] = get_scalar_data(base_uri, '.', 'loss')
-        if 'eval' in runs:
-            if 'loss' in tag_sets['eval']:
-                r['val_loss'] = get_scalar_data(base_uri, 'eval', 'loss')
+        if '.' in runs and 'loss' in tag_sets['.']:
+            r['loss'] = get_scalar_data(base_uri, '.', 'loss')
+        if 'eval' in runs and 'loss' in tag_sets['eval']:
+            r['val_loss'] = get_scalar_data(base_uri, 'eval', 'loss')
         if 'eval_lambada' in runs:
             if 'lambada_acc' in tag_sets['eval_lambada']:
                 r['lambada_acc'] = get_scalar_data(base_uri, 'eval_lambada', 'lambada_acc')
@@ -162,12 +168,21 @@ def main(_run):
     print('WARNING: please remember to remove old metric log files from the model directory.')
 
     os.makedirs('run_configs', exist_ok=True)
-    shutil.copy(args.model if args.model.endswith('.json') else 'configs/{}.json'.format(args.model), 'run_configs/config_{}.json'.format(_run._id))
+    shutil.copy(
+        args.model
+        if args.model.endswith('.json')
+        else f'configs/{args.model}.json',
+        f'run_configs/config_{_run._id}.json',
+    )
+
 
     tensorboard_port = get_open_port()
     print('Tensorboard at port:', tensorboard_port)
-    print('Tensorboard url: ', 'http://eleutherai.bmk.sh:'+ str(tensorboard_port))
-    os.system("screen -S tensorboard_{} -d -m bash -c 'tensorboard --logdir {} --port {} --bind_all --reload_multifile=true || tensorboard --logdir {} --port {} --reload_multifile=true'".format(_run._id, params["model_path"], tensorboard_port,params["model_path"], tensorboard_port,))
+    print('Tensorboard url: ', f'http://eleutherai.bmk.sh:{str(tensorboard_port)}')
+    os.system(
+        f"""screen -S tensorboard_{_run._id} -d -m bash -c 'tensorboard --logdir {params["model_path"]} --port {tensorboard_port} --bind_all --reload_multifile=true || tensorboard --logdir {params["model_path"]} --port {tensorboard_port} --reload_multifile=true'"""
+    )
+
     atexit.register(goodbye, _run._id)
 
     curr_step = {}
@@ -197,21 +212,21 @@ def main(_run):
                     _run.log_scalar(k, val, step)
                     if k == 'loss':
                         _run.log_scalar('tb_ts', ts, step)
-                        print('Logged to sacred: step={},loss={},tb_ts={}'.format(step, val, ts))
-                    
+                        print(f'Logged to sacred: step={step},loss={val},tb_ts={ts}')
+
                     # found something new, so logging!
                     last_tb_log_time = time.time()
 
                     curr_step[k] = step
 
-            for f in glob.glob('predictions_{}_*'.format(_run._id)):
+            for f in glob.glob(f'predictions_{_run._id}_*'):
                 if f in seen_predictions:
                     continue
                 print('collecting prediction file', f)
                 ex.add_artifact(f)
-                
+
                 seen_predictions.add(f)
-            
+
             # collect eval metrics from jsonl
             if os.path.exists(f'eval_{_run._id}.jsonl'):
                 with open(f'eval_{_run._id}.jsonl') as fh:
@@ -220,7 +235,7 @@ def main(_run):
                         val_step = ob['global_step']
                         val_task = ob['task']
                         for metr in ob.keys():
-                            k = 'fs.' + val_task + '.' + metr
+                            k = f'fs.{val_task}.{metr}'
                             if metr in ['task', 'global_step']: continue
                             if val_step <= curr_step.get(k, -1): continue
                             _run.log_scalar(k, ob[metr], val_step)
@@ -234,7 +249,7 @@ def main(_run):
                 while trainthd.is_alive():
                     print('logging thread waiting for killing stalled run and for tpu recreate to finish')
                     time.sleep(60)
-                
+
                 # reset heartbeat timeout to initial
                 heartbeat_timeout = args.initial_heartbeat_timeout
                 last_tb_log_time = time.time()
@@ -248,7 +263,7 @@ def goodbye(id):
     print("You are now leaving the Python sector.")
     print("Sie verlassen den pythonischen Sektor.")
 
-    os.system("screen -S tensorboard_{} -X quit".format(id))
+    os.system(f"screen -S tensorboard_{id} -X quit")
 
         
 if __name__ == '__main__':

@@ -114,56 +114,52 @@ class AdamWeightDecayOptimizer(mtf.optimize.Optimizer):
     self.variable_dtype = variable_dtype
 
   def apply_grad(self, grad, var):
-    """See base class."""
-    if grad is None:
-      tf.logging.warning("Gradient is None for variable %s" % var.name)
-      return []
-    
-    grad = mtf.to_float(grad)
+      """See base class."""
+      if grad is None:
+          tf.logging.warning(f"Gradient is None for variable {var.name}")
+          return []
 
-    assignments = []
+      grad = mtf.to_float(grad)
 
-    m = mtf.get_variable(
-        var.mesh, var.name + "/adam_m", var.shape,
-        initializer=tf.zeros_initializer(), 
-        # master_dtype=self.variable_dtype.master_dtype, 
-        # slice_dtype=self.variable_dtype.slice_dtype, 
-        # activation_dtype=self.variable_dtype.activation_dtype, 
-        trainable=False)
+      m = mtf.get_variable(
+          var.mesh,
+          f"{var.name}/adam_m",
+          var.shape,
+          initializer=tf.zeros_initializer(),
+          trainable=False,
+      )
 
-    v = mtf.get_variable(
-        var.mesh, var.name + "/adam_v", var.shape,
-        initializer=tf.zeros_initializer(), 
-        # master_dtype=self.variable_dtype.master_dtype, 
-        # slice_dtype=self.variable_dtype.slice_dtype, 
-        # activation_dtype=self.variable_dtype.activation_dtype, 
-        trainable=False)
 
-    # Standard Adam update.
-    next_m = self.beta_1 * m + (1.0 - self.beta_1) * grad
-    next_v = self.beta_2 * v + (1.0 - self.beta_2) * mtf.square(grad)
+      v = mtf.get_variable(
+          var.mesh,
+          f"{var.name}/adam_v",
+          var.shape,
+          initializer=tf.zeros_initializer(),
+          trainable=False,
+      )
 
-    update = next_m / (mtf.sqrt(next_v) + self.epsilon)
 
-    # Just adding the square of the weights to the loss function is *not*
-    # the correct way of using L2 regularization/weight decay with Adam,
-    # since that will interact with the m and v parameters in strange ways.
-    #
-    # Instead we want to decay the weights in a manner that doesn't interact
-    # with the m/v parameters. This is equivalent to adding the square
-    # of the weights to the loss with plain (non-momentum) SGD.
-    if self._do_use_weight_decay(var.name):
-      update += mtf.to_float(var.value) * self.weight_decay_rate 
+      # Standard Adam update.
+      next_m = self.beta_1 * m + (1.0 - self.beta_1) * grad
+      next_v = self.beta_2 * v + (1.0 - self.beta_2) * mtf.square(grad)
 
-    update_with_lr = self.learning_rate * update
+      update = next_m / (mtf.sqrt(next_v) + self.epsilon)
 
-    var_update = mtf.assign_sub(var, update_with_lr)
+      # Just adding the square of the weights to the loss function is *not*
+      # the correct way of using L2 regularization/weight decay with Adam,
+      # since that will interact with the m and v parameters in strange ways.
+      #
+      # Instead we want to decay the weights in a manner that doesn't interact
+      # with the m/v parameters. This is equivalent to adding the square
+      # of the weights to the loss with plain (non-momentum) SGD.
+      if self._do_use_weight_decay(var.name):
+        update += mtf.to_float(var.value) * self.weight_decay_rate 
 
-    assignments.extend(
-        [var_update,
-         mtf.assign(m, next_m),
-         mtf.assign(v, next_v)])
-    return assignments
+      update_with_lr = self.learning_rate * update
+
+      var_update = mtf.assign_sub(var, update_with_lr)
+
+      return [var_update, mtf.assign(m, next_m), mtf.assign(v, next_v)]
 
   def _do_use_weight_decay(self, param_name):
     """Whether to use L2 weight decay for `param_name`."""

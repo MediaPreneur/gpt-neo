@@ -73,21 +73,16 @@ def remove_batch_from_layout(layout):
     :return: layout minus batch dimension
     """
     layout = layout.split(',')
-    ret_layout = ""
-    for i in layout:
-        if "batch" in i:
-            pass
-        else:
-            ret_layout += f"{i},"
+    ret_layout = "".join(f"{i}," for i in layout if "batch" not in i)
     return ret_layout[:-1]
 
 
 def yes_or_no(question):
     while True:
-        reply = str(input(question+' (y/n): ')).lower().strip()
-        if reply[:1] == 'y':
+        reply = str(input(f'{question} (y/n): ')).lower().strip()
+        if reply.startswith('y'):
             return True
-        if reply[:1] == 'n':
+        if reply.startswith('n'):
             return False
 
 
@@ -105,18 +100,18 @@ def save_config(params_dict, logdir):
     total_params = len(params_dict)
     for count, key in enumerate(params_dict):
         config_value = str(params_dict[key])
-        if re.search('[a-zA-Z]', config_value):
-            if config_value.lower() != 'true':
-                if config_value.lower() != 'false':
-                    if config_value[0] != '[':
-                        # TODO: Making a manual exception for parsing epsilon right now since it's the only number in
-                        #       scientific notation. Should fix this.
-                        if key != "epsilon":
-                            config_value = f'"{config_value}"'
+        if (
+            re.search('[a-zA-Z]', config_value)
+            and config_value.lower() != 'true'
+            and config_value.lower() != 'false'
+            and config_value[0] != '['
+            and key != "epsilon"
+        ):
+            config_value = f'"{config_value}"'
         if count == total_params - 1:
-            text += f'"{str(key)}"' + ' : ' + config_value + '\n\n'
+            text += f'"{str(key)}" : {config_value}' + '\n\n'
         else:
-            text += f'"{str(key)}"'  + ' : ' + config_value + ',\n\n'
+            text += f'"{str(key)}" : {config_value}' + ',\n\n'
     text += '\n\n}'
     sess = tf.InteractiveSession()
     summary_op = tf.summary.text("run_config", tf.convert_to_tensor(text))

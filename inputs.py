@@ -15,7 +15,7 @@ def _get_number_of_documents(filename):
     # extracts number of files from a filename formatted "<name>_<num_documents>.tfrecords."
     # if no pattern is matched, returns None
     match = re.search("_(\d{1,}).tfrecords$", filename)
-    return int(match.group(1)) if match is not None else match
+    return int(match[1]) if match is not None else match
 
 
 def _get_number_of_documents_by_iteration(filename):
@@ -23,10 +23,7 @@ def _get_number_of_documents_by_iteration(filename):
     # this could be very slow.
     logging.warning(
         "inputs/sequential_input() found no metadata found in filename - iterating through first tfrecord to find global length")
-    count = 0
-    for item in tf.io.tf_record_iterator(filename):
-        count += 1
-    return count
+    return sum(1 for _ in tf.io.tf_record_iterator(filename))
 
 
 def _get_skip_index(all_files, n_batches):
@@ -99,14 +96,13 @@ def sequential_input(params, global_step=None, eval=False):
 
     filenames = []
     for dataset_config in params['dataset_configs'].values():  # iterate through each dataset and read params
-        path_key = 'path' if not eval else 'eval_path'
+        path_key = 'eval_path' if eval else 'path'
         path = dataset_config[path_key]
         filenames.extend(
             tf.io.gfile.glob(path))  # then glob all files that fit the pattern specified in dataset_configs
 
     filenames = natural_sort(filenames)
-    shuffle_filenames = params.get("shuffle_input_filenames", True)
-    if shuffle_filenames:
+    if shuffle_filenames := params.get("shuffle_input_filenames", True):
         seed = params.get('seed', 1)  # shuffle deterministically
         random.seed(seed)
         random.shuffle(filenames)
@@ -187,7 +183,7 @@ def handle_pred_output(predictions, logger, enc, params, out_name="test"):
 
 def generic_text(params, eval=False, sample_text_fn=None, **kwargs):
     logging.warning("DEPRECATION WARNING: generic_text will be phased out in future versions.")
-    i = 0 if not eval else 1
+    i = 1 if eval else 0
 
     weights = []
     datasets = []
@@ -199,7 +195,7 @@ def generic_text(params, eval=False, sample_text_fn=None, **kwargs):
             'dataset_configs'], f'Unknown dataset id {dataset_id} given. Please make sure your dataset ids contain that configuration'
         dataset_config = params['dataset_configs'][dataset_id]
 
-        path_key = 'path' if not eval else 'eval_path'
+        path_key = 'eval_path' if eval else 'path'
         path = dataset_config[path_key]
 
         datasets.append(text_dataset(
