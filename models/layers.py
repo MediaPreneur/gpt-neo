@@ -84,8 +84,9 @@ def linear_attention(q, k, v):
     k = mtf.softmax(k, seq_dim)
 
     context = mtf.einsum([k, v], output_shape=[batch_dim, head_dim, dim_in, dim_out])
-    attn = mtf.einsum([q, context], output_shape=[batch_dim, seq_dim, head_dim, dim_out])
-    return attn
+    return mtf.einsum(
+        [q, context], output_shape=[batch_dim, seq_dim, head_dim, dim_out]
+    )
 
 
 def causal_linear_attention(q, k, v, eps = 1e-6):
@@ -104,8 +105,10 @@ def causal_linear_attention(q, k, v, eps = 1e-6):
     context = mtf.einsum([k, v], output_shape=[batch_dim, seq_dim, head_dim, dim_in, dim_out])
     cumulative_context = mtf.cumsum(context, seq_dim)
 
-    attn = mtf.einsum([q, cumulative_context, D_inv], output_shape=[batch_dim, seq_dim, head_dim, dim_out])
-    return attn
+    return mtf.einsum(
+        [q, cumulative_context, D_inv],
+        output_shape=[batch_dim, seq_dim, head_dim, dim_out],
+    )
 
 
 def linear(x, scope, nf, *, w_init_stdev=0.02, variable_dtype, params=None, scale=False):
@@ -117,11 +120,17 @@ def linear(x, scope, nf, *, w_init_stdev=0.02, variable_dtype, params=None, scal
         w_init_stdev = w_init_stdev * (1. / math.sqrt(x.shape[-1].size))  # Dimension is a namedtuple of (name, size)
     # Not in the variable_scope because mtf already has a variable_scope in it
     with tf.variable_scope("conv1d_main"):
-        c = mtf.layers.dense(x, new_dims=[nf], reduced_dims=[x.shape[-1]], name=scope, use_bias=True,
-                             kernel_initializer=tf.random_normal_initializer(stddev=w_init_stdev),
-                             variable_dtype=variable_dtype,
-                             )
-        return c
+        return mtf.layers.dense(
+            x,
+            new_dims=[nf],
+            reduced_dims=[x.shape[-1]],
+            name=scope,
+            use_bias=True,
+            kernel_initializer=tf.random_normal_initializer(
+                stddev=w_init_stdev
+            ),
+            variable_dtype=variable_dtype,
+        )
 
 
 def memory_key_values(k, v, num_mem_kv, dim_batch, dim_heads, variable_dtype, mesh):
@@ -257,7 +266,7 @@ def attn(x, scope, n_state, *, attention_type, params, bias, dim_seq, memory_len
                 a = linear_attn_fn(q, k, v)
 
             else:
-                raise NotImplementedError("Unknown attention type {}!".format(attention_type))
+                raise NotImplementedError(f"Unknown attention type {attention_type}!")
 
         with tf.variable_scope("compute_output"):
             a = mtfparams.compute_output(a, x_shape)

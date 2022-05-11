@@ -79,10 +79,14 @@ def test_model():
     embd_dim = mtf.Dimension("embd", params["n_embd"])
     vocab_dim = mtf.Dimension("vocab", params["n_vocab"])
 
-    other_features = {}
     variable_dtype = mtf.VariableDType(tf.float32, tf.float32, tf.float32)
 
-    other_features["attn_bias"] = biasmask_attn_weights(mesh, length_dim, memory_length_dim, variable_dtype)
+    other_features = {
+        "attn_bias": biasmask_attn_weights(
+            mesh, length_dim, memory_length_dim, variable_dtype
+        )
+    }
+
     other_features["embd_dim"] = embd_dim
     other_features["vocab_dim"] = vocab_dim
     other_features["embed_sequence_dim"] = embed_sequence_dim
@@ -116,9 +120,13 @@ def test_sampling():
     embd_dim = mtf.Dimension("embd", params["n_embd"])
     vocab_dim = mtf.Dimension("vocab", params["n_vocab"])
 
-    other_features = {}
+    other_features = {
+        "attn_bias": biasmask_attn_weights(
+            mesh, length_dim, memory_length_dim, mtf.VariableDType(tf.float32)
+        )
+    }
 
-    other_features["attn_bias"] = biasmask_attn_weights(mesh, length_dim, memory_length_dim, mtf.VariableDType(tf.float32))
+
     other_features["embd_dim"] = embd_dim
     other_features["vocab_dim"] = vocab_dim
     other_features["embed_sequence_dim"] = embed_sequence_dim

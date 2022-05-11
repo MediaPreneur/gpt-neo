@@ -81,10 +81,9 @@ def entmax_cross_entropy_with_logits(logits, targets, vocab_dim, z_loss=0.0):
 
     log_entmax = mtf.log(entmax(logits, dim=vocab_dim))
 
-    loss = mtf.negative(
-        mtf.reduce_sum(log_entmax * targets, reduced_dim=vocab_dim))
-
-    return loss
+    return mtf.negative(
+        mtf.reduce_sum(log_entmax * targets, reduced_dim=vocab_dim)
+    )
 
 
 def sample_categorical(x, dim=None):

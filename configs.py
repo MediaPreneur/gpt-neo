@@ -21,7 +21,10 @@ def fetch_model_params(model):
         else:
             dataset_ids.append(d)
     no_datasets = params.get("no_dataset", False)
-    assert no_datasets or len(dataset_ids) > 0, "You must specify at least one dataset id in the model config"
+    assert (
+        no_datasets or dataset_ids
+    ), "You must specify at least one dataset id in the model config"
+
 
     datasets = {}
     last_dataset = None

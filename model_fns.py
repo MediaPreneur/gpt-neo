@@ -155,13 +155,12 @@ def model_fn(features, labels, mode, params):
 
         # For serialize_training_step we need to modify the model to output results in a dict
         def serialized_fn(mtf_features):
-            if params["model"] == "GPT":
-                with tf.variable_scope('gpt2'):
-                    logits, loss, loss_batch = gpt2.model(mtf_features, other_features, params, mesh,
-                                                          variable_dtype=variable_dtype)
-                return {"logits": logits, "loss": loss, "loss_batch": loss_batch}
-            else:
+            if params["model"] != "GPT":
                 raise Exception(f"'{params['model']}' is not a valid model - please select from [GPT]")
+            with tf.variable_scope('gpt2'):
+                logits, loss, loss_batch = gpt2.model(mtf_features, other_features, params, mesh,
+                                                      variable_dtype=variable_dtype)
+            return {"logits": logits, "loss": loss, "loss_batch": loss_batch}
 
         # Serialize the training step - Gradients are accumulated locally and reduced once.
         var_grads, output_dict = mtf.serialize_training_step(mtf_features, serialized_fn, batch_dim, num_microbatches)

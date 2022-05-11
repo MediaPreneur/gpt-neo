@@ -34,7 +34,7 @@ def block(params, scope, layer_num, bias, sequence_dim, memory_length_dim, pos_e
             if macaron_attention:
                 mult = 0.5
                 mlp_fn = mlp_glu if use_mlp_glu else mlp
-                intermediate_size = nx.size * 4 * (1 if not use_mlp_glu else 2)
+                intermediate_size = nx.size * 4 * (2 if use_mlp_glu else 1)
                 # Define intermediate layer of mlp - to split
                 dim_intermediate_expanded = mtf.Dimension("intermediate_expanded", intermediate_size)
                 m = mlp_fn(x, "mlp_macaron", dim_intermediate_expanded, variable_dtype=variable_dtype, params=params)
@@ -79,7 +79,7 @@ def block(params, scope, layer_num, bias, sequence_dim, memory_length_dim, pos_e
             else:
 
                 mlp_fn = mlp_glu if use_mlp_glu else mlp
-                intermediate_size = nx.size * 4 * (1 if not use_mlp_glu else 2)
+                intermediate_size = nx.size * 4 * (2 if use_mlp_glu else 1)
 
                 # Define intermediate layer of mlp - to split
                 dim_intermediate_expanded = mtf.Dimension("intermediate_expanded", intermediate_size)
@@ -142,8 +142,12 @@ def model(mtf_features, other_features, params, mesh, variable_dtype, context=No
     if exists(wpe):
         with tf.variable_scope("pos_embd"):
             # Positional embedding
-            position_indices = mtf.range(mesh, sequence_dim, tf.int64) if not is_incremental_inference(context) else (
-                    context.position - 1)
+            position_indices = (
+                context.position - 1
+                if is_incremental_inference(context)
+                else mtf.range(mesh, sequence_dim, tf.int64)
+            )
+
             pos_emb = mtf.gather(wpe, position_indices, wpe.shape[0])
             if params["embed_dropout"] > 0 and params["mode"] == "train":
                 pos_emb = mtf.dropout(pos_emb, rate=params["embed_dropout"], name="wte_dropout")
@@ -154,7 +158,7 @@ def model(mtf_features, other_features, params, mesh, variable_dtype, context=No
     for layer in range(params["n_layer"]):
         # attn blocks
         share_parameters = exists(params["share_parameters"]) and params["share_parameters"] == True
-        block_scope = f"h{layer}" if not share_parameters else ""
+        block_scope = "" if share_parameters else f"h{layer}"
 
         block_fn = block(params=params, scope=block_scope, layer_num=layer,
                          bias=other_features["attn_bias"],
@@ -165,8 +169,8 @@ def model(mtf_features, other_features, params, mesh, variable_dtype, context=No
                          context=context)
 
         # If true and in train mode, enable gradient checkpointing
-        recompute_grad = params["recompute_grad"] and (params["mode"] == "train") == True
-        h, loss = block_fn(h) if not recompute_grad else mtf.recompute_grad(block_fn, [h])
+        recompute_grad = params["recompute_grad"] and params["mode"] == "train"
+        h, loss = mtf.recompute_grad(block_fn, [h]) if recompute_grad else block_fn(h)
         aux_losses += loss
 
     no_weight_tie_emb = params["no_weight_tie"] == True
@@ -176,7 +180,12 @@ def model(mtf_features, other_features, params, mesh, variable_dtype, context=No
     else:
         # Layer normalize & affine transform
         h = layer_norm(h, "ln_f", variable_dtype=variable_dtype)
-        seq_dim = sequence_dim if not is_incremental_inference(context) else mtf.Dimension("sequence", 1)
+        seq_dim = (
+            mtf.Dimension("sequence", 1)
+            if is_incremental_inference(context)
+            else sequence_dim
+        )
+
         with tf.variable_scope("wte_final_einsum"):
             # Equivalent to tf.matmul
             logits = mtf.einsum([h, wte], output_shape=[batch_dim, seq_dim, vocab_dim])
@@ -189,7 +198,12 @@ def model(mtf_features, other_features, params, mesh, variable_dtype, context=No
         logits = mtf.cast(logits, tf.float32)
 
         use_entmax_loss = params.get("entmax_loss", False)
-        loss_fn = mtf.layers.softmax_cross_entropy_with_logits if not use_entmax_loss else entmax_cross_entropy_with_logits
+        loss_fn = (
+            entmax_cross_entropy_with_logits
+            if use_entmax_loss
+            else mtf.layers.softmax_cross_entropy_with_logits
+        )
+
 
         with tf.variable_scope("xentropy_final"):
             loss_batch = loss_fn(logits=logits, targets=labels,

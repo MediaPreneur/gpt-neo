@@ -46,7 +46,7 @@ def bin_pack(params, tokens_data):
     pad_batch_size = params['eval_batch_size']
     bins = []
     for a in tokens_data:
-        if len(bins) == 0 or len(bins[-1]) + len(a) + 1 > n_ctx:
+        if not bins or len(bins[-1]) + len(a) + 1 > n_ctx:
             bins.append([])
         bins[-1] += a
         bins[-1].append(eos_token)
@@ -64,7 +64,7 @@ def lambada_init(params):
         ds_configs[ds_id].get('lambada_tokens_path', "./lambada.json")
         for ds_id, _, _, _ in params['datasets']
     ]
-    assert len(l) > 0, 'lambada_tokens_path not found in the dataset config'
+    assert l, 'lambada_tokens_path not found in the dataset config'
     lt_path = l[0]
     assert lt_path.endswith('.json'), 'lambada_tokens_path must have extension json'
 

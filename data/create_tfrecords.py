@@ -36,9 +36,9 @@ parser.add_argument("--processes", type=int, default=0, help="Number of processe
 
 args = parser.parse_args()
 if not args.output_dir.endswith("/"):
-    args.output_dir = args.output_dir + "/"
+    args.output_dir = f"{args.output_dir}/"
 if not args.input_dir.endswith("/"):
-    args.input_dir = args.input_dir + "/"
+    args.input_dir = f"{args.input_dir}/"
 assert len(args.separator) == 1
 
 
@@ -67,7 +67,7 @@ def wikitext_detokenizer(string):
     string = string.replace("= = = =", "====")
     string = string.replace("= = =", "===")
     string = string.replace("= =", "==")
-    string = string.replace(" " + chr(176) + " ", chr(176))
+    string = string.replace(f" {chr(176)} ", chr(176))
     string = string.replace(" \n", "\n")
     string = string.replace("\n ", "\n")
     string = string.replace(" N ", " 1 ")
@@ -122,12 +122,12 @@ def archive_to_tokens(f, encoder, args, prefix=[]):
 
 def write_files(files, files_per, output_dir, out_name, start_no, write_remainder=False, process_no=None):
     # writes a list of files to .tfrecords
-    if files == None:
+    if files is None:
         return
     chunks = split_list(files, files_per)
     if not chunks:
         return
-      
+
     if len(chunks[-1]) != files_per and not write_remainder:  # pop the last file if it's length != files per
         remainder = chunks.pop(-1)
     else:
@@ -149,7 +149,7 @@ def write_files(files, files_per, output_dir, out_name, start_no, write_remainde
 
 def get_files(input_dir, filetypes=None):
     # gets all files of <filetypes> in input_dir
-    if filetypes == None:
+    if filetypes is None:
         filetypes = ["jsonl.zst", ".txt", ".xz", ".tar.gz"]
     files = [list(Path(input_dir).glob(f"*{ft}")) for ft in filetypes]
     # flatten list of list -> list and stringify Paths
